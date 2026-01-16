@@ -1,0 +1,13 @@
+{
+    "port": "8080",
+    "services": [
+        {
+            "path": "/api/users",
+            "target": "http://localhost:3001"
+        },
+        {
+            "path": "/api/orders",
+            "target": "http://localhost:3002"
+        }
+    ]
+}
