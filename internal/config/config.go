@@ -9,13 +9,13 @@ import (
 type Config struct {
 	Server       ServerConfig    `json:"server"`
 	Redis        RedisConfig     `json:"redis"`
-	Services     []ServiceConfig `json: "services"`
-	RateLimiters []RateLimiter   `json: "rate_limiters"`
+	Services     []ServiceConfig `json:"services"`
+	RateLimiters []RateLimiter   `json:"rate_limiters"`
 }
 
 type ServerConfig struct {
 	Port        string `json:"port"`
-	Environment string `json: "environment"` // Development or production
+	Environment string `json:"environment"` // Development or production
 }
 
 type RedisConfig struct {
@@ -26,8 +26,8 @@ type RedisConfig struct {
 }
 
 type ServiceConfig struct {
-	Path    string   `json: "path"`
-	Targets []string `json: "targets"`
+	Path    string   `json:"path"`
+	Targets []string `json:"targets"`
 }
 
 type RateLimiter struct {
