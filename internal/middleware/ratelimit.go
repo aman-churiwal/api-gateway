@@ -36,7 +36,7 @@ func RateLimiter(limiter *ratelimit.FixedWindowLimiter) gin.HandlerFunc {
 		c.Header("X-RateLimit-Reset", fmt.Sprintf("%d", resetTime.Unix()))
 
 		if !allowed {
-			retryAfter := int(resetTime.Sub(time.Now()).Seconds())
+			retryAfter := int(time.Until(resetTime).Seconds())
 			if retryAfter < 0 {
 				retryAfter = 0
 			}
