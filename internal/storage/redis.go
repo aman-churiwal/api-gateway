@@ -54,6 +54,22 @@ func (r *RedisClient) Expire(ctx context.Context, key string, expiration time.Du
 	return r.client.Expire(ctx, key, expiration).Err()
 }
 
+func (r *RedisClient) Pipeline() redis.Pipeliner {
+	return r.client.Pipeline()
+}
+
+func (r *RedisClient) ZAdd(ctx context.Context, key string, members ...redis.Z) error {
+	return r.client.ZAdd(ctx, key, members...).Err()
+}
+
+func (r *RedisClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
+	return r.client.ZCount(ctx, key, min, max).Result()
+}
+
+func (r *RedisClient) ZRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	return r.client.ZRange(ctx, key, start, stop).Result()
+}
+
 func (r *RedisClient) Close() error {
 	return r.client.Close()
 }

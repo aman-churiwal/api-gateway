@@ -8,6 +8,8 @@ import (
 
 func NewLimiter(redis *storage.RedisClient, algorithm string, limit int, window time.Duration) Limiter {
 	switch algorithm {
+	case "sliding_window":
+		return NewSlidingWindowLimiter(redis, limit, window)
 	case "token_bucket":
 		refillRate := limit / int(window.Seconds())
 		if refillRate == 0 {
