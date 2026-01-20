@@ -19,6 +19,7 @@ type Server struct {
 	config     *config.Config
 	redis      *storage.RedisClient
 	proxies    map[string]*proxy.Proxy
+	limiter    ratelimit.Limiter
 	httpServer *http.Server
 }
 
@@ -79,16 +80,19 @@ func (s *Server) setupMiddleware() {
 	}
 }
 
-func (s *Server) createRateLimiter() *ratelimit.FixedWindowLimiter {
-	limit := 100
-	window := time.Minute
-
-	if len(s.config.RateLimiters) > 0 {
-		tier := s.config.RateLimiters[0]
-		limit = tier.RequestsPerMinute
+func (s *Server) createRateLimiter() ratelimit.Limiter {
+	if len(s.config.RateLimiters) == 0 {
+		return ratelimit.NewFixedWindow(s.redis, 100, time.Minute)
 	}
 
-	return ratelimit.NewFixedWindow(s.redis, limit, window)
+	tier := s.config.RateLimiters[0]
+
+	return ratelimit.NewLimiter(
+		s.redis,
+		tier.Algorithm,
+		tier.RequestsPerMinute,
+		time.Minute,
+	)
 }
 
 func (s *Server) setupRoutes() {

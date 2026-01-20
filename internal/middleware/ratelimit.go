@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RateLimiter(limiter *ratelimit.FixedWindowLimiter) gin.HandlerFunc {
+func RateLimiter(limiter ratelimit.Limiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract API key from header
 		key := c.GetHeader("X-API-Key")
