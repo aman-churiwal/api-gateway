@@ -30,5 +30,9 @@ func (p *Proxy) Handle(c *gin.Context) {
 	c.Request.Header.Set("X-Forwarded-Host", c.Request.Header.Get("Host"))
 	c.Request.Host = p.target.Host
 
+	if clientIP := c.ClientIP(); clientIP != "" {
+		c.Request.Header.Set("X-Forwarder-For", clientIP)
+	}
+
 	p.proxy.ServeHTTP(c.Writer, c.Request)
 }

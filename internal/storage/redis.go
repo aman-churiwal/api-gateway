@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -11,14 +12,26 @@ type RedisClient struct {
 	client *redis.Client
 }
 
-func NewRedis(addr string) *RedisClient {
+func NewRedis(addr, password string, db int) (*RedisClient, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: "",
-		DB:       0,
+		Addr:         addr,
+		Password:     password,
+		DB:           db,
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 3 * time.Second,
+		PoolSize:     10,
+		MinIdleConns: 5,
 	})
 
-	return &RedisClient{client: client}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	return &RedisClient{client: client}, nil
 }
 
 func (r *RedisClient) Ping(ctx context.Context) error {
@@ -39,4 +52,8 @@ func (r *RedisClient) Incr(ctx context.Context, key string) (int64, error) {
 
 func (r *RedisClient) Expire(ctx context.Context, key string, expiration time.Duration) error {
 	return r.client.Expire(ctx, key, expiration).Err()
+}
+
+func (r *RedisClient) Close() error {
+	return r.client.Close()
 }
