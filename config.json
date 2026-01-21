@@ -9,6 +9,14 @@
         "password": "",
         "db": 0
     },
+    "database": {
+        "host": "localhost",
+        "port": 5433,
+        "user": "gateway",
+        "password": "password",
+        "dbname": "gateway",
+        "sslmode": "disable"
+    },
     "services": [
         {
             "path": "/api/users",
@@ -28,6 +36,18 @@
             "name": "basic",
             "requests_per_minute": 60,
             "requests_per_hour": 1000,
+            "algorithm": "fixed_window"
+        },
+        {
+            "name": "pro",
+            "requests_per_minute": 1000,
+            "requests_per_hour": 50000,
+            "algorithm": "token_bucket"
+        },
+        {
+            "name": "enterprise",
+            "requests_per_minute": 10000,
+            "requests_per_hour": 500000,
             "algorithm": "sliding_window"
         }
     ]

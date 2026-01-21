@@ -7,34 +7,46 @@ import (
 	"time"
 
 	"github.com/aman-churiwal/api-gateway/internal/config"
+	"github.com/aman-churiwal/api-gateway/internal/handler"
 	"github.com/aman-churiwal/api-gateway/internal/middleware"
 	"github.com/aman-churiwal/api-gateway/internal/proxy"
-	"github.com/aman-churiwal/api-gateway/internal/ratelimit"
+	"github.com/aman-churiwal/api-gateway/internal/repository"
+	"github.com/aman-churiwal/api-gateway/internal/service"
 	"github.com/aman-churiwal/api-gateway/internal/storage"
 	"github.com/gin-gonic/gin"
 )
 
 type Server struct {
-	router     *gin.Engine
-	config     *config.Config
-	redis      *storage.RedisClient
-	proxies    map[string]*proxy.Proxy
-	limiter    ratelimit.Limiter
-	httpServer *http.Server
+	router        *gin.Engine
+	config        *config.Config
+	redis         *storage.RedisClient
+	postgres      *storage.Postgres
+	proxies       map[string]*proxy.Proxy
+	apiKeyService *service.APIKeyService
+	apiKeyHandler *handler.APIKeyHandler
+	httpServer    *http.Server
 }
 
-func New(cfg *config.Config, redis *storage.RedisClient) *Server {
+func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postgres) *Server {
 	if cfg.Server.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.New()
 
+	// Initialize API Key service and handler
+	apiKeyRepo := repository.NewAPIKeyRepository(postgres)
+	apiKeyService := service.NewAPIKeyService(postgres, apiKeyRepo, redis)
+	apiKeyHandler := handler.NewAPIKeyHandler(*apiKeyService)
+
 	s := &Server{
-		router:  router,
-		config:  cfg,
-		redis:   redis,
-		proxies: make(map[string]*proxy.Proxy),
+		router:        router,
+		config:        cfg,
+		redis:         redis,
+		postgres:      postgres,
+		proxies:       make(map[string]*proxy.Proxy),
+		apiKeyService: apiKeyService,
+		apiKeyHandler: apiKeyHandler,
 	}
 
 	// Initialize proxies for each configured service
@@ -59,7 +71,7 @@ func (s *Server) initializeProxies() {
 
 		p, err := proxy.New(svc.Targets[0])
 		if err != nil {
-			log.Printf("Failed to creater proxy for %s: %v", svc.Path, err)
+			log.Printf("Failed to create proxy for %s: %v", svc.Path, err)
 			continue
 		}
 
@@ -73,37 +85,21 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID())
 	s.router.Use(middleware.Logger())
 	s.router.Use(middleware.CORS())
-
-	rateLimiter := s.createRateLimiter()
-	if rateLimiter != nil {
-		s.router.Use(middleware.RateLimiter(rateLimiter))
-	}
-}
-
-func (s *Server) createRateLimiter() ratelimit.Limiter {
-	if len(s.config.RateLimiters) == 0 {
-		return ratelimit.NewFixedWindow(s.redis, 100, time.Minute)
-	}
-
-	tier := s.config.RateLimiters[0]
-
-	return ratelimit.NewLimiter(
-		s.redis,
-		tier.Algorithm,
-		tier.RequestsPerMinute,
-		time.Minute,
-	)
+	s.router.Use(middleware.APIKeyValidator(s.apiKeyService))
+	s.router.Use(middleware.RateLimitWithTier(s.redis, s.config))
 }
 
 func (s *Server) setupRoutes() {
 	s.router.GET("/health", s.healthCheck)
 
-	s.setupProxyRoutes()
-
 	admin := s.router.Group("/admin")
 	{
 		admin.GET("/status", s.adminStatus)
+		admin.POST("/keys", s.apiKeyHandler.Create)
+		admin.GET("/keys", s.apiKeyHandler.List)
+		admin.DELETE("/keys/:id", s.apiKeyHandler.Delete)
 	}
+	s.setupProxyRoutes()
 }
 
 func (s *Server) setupProxyRoutes() {
@@ -131,10 +127,16 @@ func (s *Server) healthCheck(c *gin.Context) {
 		log.Printf("Redis health check failed: %v", err)
 	}
 
+	dbHealthy := true
+	if err := s.postgres.Ping(c.Request.Context()); err != nil {
+		dbHealthy = false
+		log.Printf("Database health check failed: %v", err)
+	}
+
 	status := "healthy"
 	statusCode := http.StatusOK
 
-	if !redisHealthy {
+	if !redisHealthy || !dbHealthy {
 		status = "degraded"
 		statusCode = http.StatusServiceUnavailable
 	}
@@ -145,16 +147,21 @@ func (s *Server) healthCheck(c *gin.Context) {
 		"version":   "1.0.0",
 		"timestamp": time.Now().Unix(),
 		"checks": gin.H{
-			"redis": redisHealthy,
+			"redis":    redisHealthy,
+			"database": dbHealthy,
 		},
 	})
 }
 
 func (s *Server) adminStatus(c *gin.Context) {
+	ctx := c.Request.Context()
+	keys, _ := s.apiKeyService.List(ctx)
 	c.JSON(http.StatusOK, gin.H{
-		"gateway":  "running",
-		"services": len(s.config.Services),
-		"uptime":   time.Since(startTime).Seconds(),
+		"gateway":   "running",
+		"services":  len(s.config.Services),
+		"api_keys":  len(keys),
+		"uptime":    time.Since(startTime).Seconds(),
+		"timestamp": time.Now().Unix(),
 	})
 }
 

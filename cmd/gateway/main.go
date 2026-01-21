@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -23,6 +24,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize Redis
 	redis, err := storage.NewRedis(
 		cfg.Redis.GetRedisAddr(),
 		cfg.Redis.Password,
@@ -30,14 +32,38 @@ func main() {
 	)
 
 	if err != nil {
-		log.Fatalf("Failed to connect to Reids: %v", err)
+		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 	defer redis.Close()
 
 	log.Println("Connected to redis successfully")
 
+	// Connect to PostgreSQL
+	// dsn := "host=localhost user=gateway password=password dbname=gateway port=5433 sslmode=disable"
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.DBName,
+		cfg.Database.SSLMode,
+	)
+
+	postgres, err := storage.NewPostgres(dsn)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+	defer postgres.Close()
+	log.Println("Connected to PostgreSQL successfully")
+
+	// Run migrations
+	if err := postgres.AutoMigrate(); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+	log.Println("Database migrations completed")
+
 	// Create server
-	srv := server.New(cfg, redis)
+	srv := server.New(cfg, redis, postgres)
 
 	go func() {
 		addr := ":" + cfg.Server.Port
@@ -59,5 +85,5 @@ func main() {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
-	log.Println("Sever Exited")
+	log.Println("Server Exited")
 }
