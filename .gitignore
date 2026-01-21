@@ -1,0 +1,22 @@
+# Binaries
+*.exe
+*.exe~
+
+# Test output
+*.out
+*.test
+
+# Environment variables (keep .env.example)
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Debug
+__debug_bin*

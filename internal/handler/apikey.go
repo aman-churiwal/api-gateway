@@ -11,8 +11,8 @@ type APIKeyHandler struct {
 	service *service.APIKeyService
 }
 
-func NewAPIKeyHandler(service service.APIKeyService) *APIKeyHandler {
-	return &APIKeyHandler{service: &service}
+func NewAPIKeyHandler(service *service.APIKeyService) *APIKeyHandler {
+	return &APIKeyHandler{service: service}
 }
 
 func (h *APIKeyHandler) Create(c *gin.Context) {

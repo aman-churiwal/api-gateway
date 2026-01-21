@@ -24,6 +24,8 @@ type Server struct {
 	proxies       map[string]*proxy.Proxy
 	apiKeyService *service.APIKeyService
 	apiKeyHandler *handler.APIKeyHandler
+	authService   *service.AuthService
+	authHandler   *handler.AuthHandler
 	httpServer    *http.Server
 }
 
@@ -34,10 +36,17 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 
 	router := gin.New()
 
-	// Initialize API Key service and handler
+	// Initialize repositories
 	apiKeyRepo := repository.NewAPIKeyRepository(postgres)
+	authRepo := repository.NewUserRepository(postgres)
+
+	// Initialize services
 	apiKeyService := service.NewAPIKeyService(postgres, apiKeyRepo, redis)
-	apiKeyHandler := handler.NewAPIKeyHandler(*apiKeyService)
+	authService := service.NewAuthService(authRepo, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
+
+	// Initialize handlers
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
+	authHandler := handler.NewAuthHandler(authService)
 
 	s := &Server{
 		router:        router,
@@ -47,6 +56,8 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 		proxies:       make(map[string]*proxy.Proxy),
 		apiKeyService: apiKeyService,
 		apiKeyHandler: apiKeyHandler,
+		authService:   authService,
+		authHandler:   authHandler,
 	}
 
 	// Initialize proxies for each configured service
@@ -92,13 +103,26 @@ func (s *Server) setupMiddleware() {
 func (s *Server) setupRoutes() {
 	s.router.GET("/health", s.healthCheck)
 
-	admin := s.router.Group("/admin")
+	auth := s.router.Group("/auth")
 	{
-		admin.GET("/status", s.adminStatus)
+		auth.POST("/register", s.authHandler.Register)
+		auth.POST("/login", s.authHandler.Login)
+		auth.GET("/me", s.authHandler.Me)
+	}
+
+	// Admin routes - Protected with JWT Authentication
+	admin := s.router.Group("/admin")
+	admin.Use(middleware.RequireAuth(s.authService))
+	{
 		admin.POST("/keys", s.apiKeyHandler.Create)
 		admin.GET("/keys", s.apiKeyHandler.List)
+		admin.GET("/keys/:id", s.apiKeyHandler.Get)
+		admin.PUT("/keys/:id", s.apiKeyHandler.Update)
 		admin.DELETE("/keys/:id", s.apiKeyHandler.Delete)
+		admin.GET("/status", s.adminStatus)
 	}
+
+	// Proxy routes
 	s.setupProxyRoutes()
 }
 

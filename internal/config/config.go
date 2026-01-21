@@ -10,6 +10,7 @@ type Config struct {
 	Server         ServerConfig      `json:"server"`
 	Redis          RedisConfig       `json:"redis"`
 	Database       DatabaseConfig    `json:"database"`
+	JWT            JWTConfig         `json:"jwt"`
 	Services       []ServiceConfig   `json:"services"`
 	RateLimitTiers []RateLimiterTier `json:"rate_limit_tiers"`
 }
@@ -33,6 +34,11 @@ type DatabaseConfig struct {
 	Password string `json:"password"`
 	DBName   string `json:"dbname"`
 	SSLMode  string `json:"sslmode"`
+}
+
+type JWTConfig struct {
+	Secret      string `json:"secret"`
+	ExpiryHours int    `json:"expiry_hours"`
 }
 
 type ServiceConfig struct {
@@ -97,6 +103,11 @@ func applyEnvOverrides(cfg *Config) {
 	if dbname := os.Getenv("DB_NAME"); dbname != "" {
 		cfg.Database.DBName = dbname
 	}
+
+	// JWT overrides
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		cfg.JWT.Secret = secret
+	}
 }
 
 func validate(cfg *Config) error {
@@ -126,6 +137,13 @@ func validate(cfg *Config) error {
 		if len(svc.Targets) == 0 {
 			return fmt.Errorf("service %d: at least one target is required", i)
 		}
+	}
+
+	if cfg.JWT.Secret == "" {
+		return fmt.Errorf("JWT secret is required")
+	}
+	if cfg.JWT.ExpiryHours <= 0 {
+		cfg.JWT.ExpiryHours = 24 // Default to 24 hours
 	}
 
 	return nil

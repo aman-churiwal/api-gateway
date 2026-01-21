@@ -5,6 +5,53 @@ Write-Host ""
 $baseUrl = "http://localhost:8080"
 $createdKeyId = $null
 $createdKey = $null
+$authToken = $null
+
+# Step 0: Register and Login to get JWT token
+Write-Host "Step 0: Setting up authentication..." -ForegroundColor Yellow
+
+$testEmail = "test-admin-$(Get-Random)@test.com"
+$testPassword = "TestPassword123!"
+
+# Register
+try {
+    $registerBody = @{
+        email    = $testEmail
+        password = $testPassword
+        name     = "Test Admin"
+    }
+    $null = Invoke-RestMethod -Uri "$baseUrl/auth/register" -Method POST `
+        -ContentType "application/json" `
+        -Body ($registerBody | ConvertTo-Json -Compress)
+    Write-Host "Registered user: $testEmail" -ForegroundColor Green
+}
+catch {
+    Write-Host "Registration: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# Login
+try {
+    $loginBody = @{
+        email    = $testEmail
+        password = $testPassword
+    }
+    $loginResponse = Invoke-RestMethod -Uri "$baseUrl/auth/login" -Method POST `
+        -ContentType "application/json" `
+        -Body ($loginBody | ConvertTo-Json -Compress)
+    
+    $authToken = $loginResponse.token
+    Write-Host "SUCCESS: Got JWT token" -ForegroundColor Cyan
+}
+catch {
+    Write-Host "FAILED: Login failed - $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+$headers = @{
+    Authorization = "Bearer $authToken"
+}
+
+Write-Host ""
 
 # Test 1: Create API Key
 Write-Host "Test 1: Create API Key" -ForegroundColor Yellow
@@ -19,7 +66,8 @@ $body = @{
 try {
     $createResponse = Invoke-RestMethod -Uri "$baseUrl/admin/keys" -Method POST `
         -ContentType "application/json" `
-        -Body ($body | ConvertTo-Json -Compress)
+        -Body ($body | ConvertTo-Json -Compress) `
+        -Headers $headers
     
     Write-Host "Response: $($createResponse | ConvertTo-Json -Compress)" -ForegroundColor Green
     
@@ -37,7 +85,7 @@ Write-Host ""
 # Test 2: List All API Keys and find our key
 Write-Host "Test 2: List API Keys (verify our key exists)" -ForegroundColor Yellow
 try {
-    $keys = Invoke-RestMethod -Uri "$baseUrl/admin/keys" -Method GET
+    $keys = Invoke-RestMethod -Uri "$baseUrl/admin/keys" -Method GET -Headers $headers
     Write-Host "Total Keys: $($keys.Count)" -ForegroundColor Green
     
     # Find our key by name
@@ -85,7 +133,7 @@ Write-Host ""
 Write-Host "Test 4: Delete Our Test Key (cleanup)" -ForegroundColor Yellow
 if ($createdKeyId) {
     try {
-        $deleteResponse = Invoke-RestMethod -Uri "$baseUrl/admin/keys/$createdKeyId" -Method DELETE
+        $deleteResponse = Invoke-RestMethod -Uri "$baseUrl/admin/keys/$createdKeyId" -Method DELETE -Headers $headers
         Write-Host "Response: $($deleteResponse | ConvertTo-Json -Compress)" -ForegroundColor Green
         Write-Host "SUCCESS: Test key deleted" -ForegroundColor Cyan
     }
@@ -102,7 +150,7 @@ Write-Host ""
 # Test 5: Verify our key is deleted
 Write-Host "Test 5: Verify Our Key is Deleted" -ForegroundColor Yellow
 try {
-    $keys2 = Invoke-RestMethod -Uri "$baseUrl/admin/keys" -Method GET
+    $keys2 = Invoke-RestMethod -Uri "$baseUrl/admin/keys" -Method GET -Headers $headers
     $found = $false
     foreach ($key in $keys2) {
         if ($key.name -eq $keyName) {

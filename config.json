@@ -17,6 +17,10 @@
         "dbname": "gateway",
         "sslmode": "disable"
     },
+    "jwt": {
+        "secret": "my-secret-key",
+        "expiry_hours": 24
+    },
     "services": [
         {
             "path": "/api/users",

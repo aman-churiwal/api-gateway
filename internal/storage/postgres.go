@@ -53,6 +53,7 @@ func (p *Postgres) AutoMigrate() error {
 	return p.DB.AutoMigrate(
 		&models.APIKey{},
 		&models.RateLimitTier{},
+		&models.User{},
 	)
 }
 
