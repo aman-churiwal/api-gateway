@@ -42,8 +42,15 @@ type JWTConfig struct {
 }
 
 type ServiceConfig struct {
-	Path    string   `json:"path"`
-	Targets []string `json:"targets"`
+	Path           string                `json:"path"`
+	Targets        []string              `json:"targets"`
+	CircuitBreaker *CircuitBreakerConfig `json:"circuit_breaker,omitempty"`
+}
+
+type CircuitBreakerConfig struct {
+	MaxFailures     int `json:"max_failures"`      // Default: 5
+	TimeoutSeconds  int `json:"timeout_seconds"`   // Default: 30
+	HalfOpenSuccess int `json:"half_open_success"` // Default: 1
 }
 
 type RateLimiterTier struct {

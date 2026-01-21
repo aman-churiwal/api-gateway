@@ -26,6 +26,7 @@ type Server struct {
 	apiKeyHandler *handler.APIKeyHandler
 	authService   *service.AuthService
 	authHandler   *handler.AuthHandler
+	systemHandler *handler.SystemHandler
 	httpServer    *http.Server
 }
 
@@ -63,6 +64,9 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 	// Initialize proxies for each configured service
 	s.initializeProxies()
 
+	// Initialize system handler after proxies are created
+	s.systemHandler = handler.NewSystemHandler(s.proxies)
+
 	// Setup middleware
 	s.setupMiddleware()
 
@@ -72,6 +76,7 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 	return s
 }
 
+// Creates proxy instances for each configured backend service
 func (s *Server) initializeProxies() {
 	for _, svc := range s.config.Services {
 		// Use the first target
@@ -91,15 +96,22 @@ func (s *Server) initializeProxies() {
 	}
 }
 
+// Configures the middleware chain
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.Recovery())
+
 	s.router.Use(middleware.RequestID())
+
 	s.router.Use(middleware.Logger())
+
 	s.router.Use(middleware.CORS())
+
 	s.router.Use(middleware.APIKeyValidator(s.apiKeyService))
+
 	s.router.Use(middleware.RateLimitWithTier(s.redis, s.config))
 }
 
+// Configures all application routes
 func (s *Server) setupRoutes() {
 	s.router.GET("/health", s.healthCheck)
 
@@ -120,12 +132,17 @@ func (s *Server) setupRoutes() {
 		admin.PUT("/keys/:id", s.apiKeyHandler.Update)
 		admin.DELETE("/keys/:id", s.apiKeyHandler.Delete)
 		admin.GET("/status", s.adminStatus)
+
+		// Circuit Breaker management (NEW)
+		admin.GET("/circuit-breakers", s.systemHandler.CircuitBreakerStatus)
+		admin.POST("/circuit-breakers/*service", s.systemHandler.ResetCircuitBreaker)
 	}
 
 	// Proxy routes
 	s.setupProxyRoutes()
 }
 
+// Configures routes that proxy to backend services
 func (s *Server) setupProxyRoutes() {
 	for path, proxyInstance := range s.proxies {
 		proxyPath := path
@@ -143,6 +160,7 @@ func (s *Server) setupProxyRoutes() {
 	}
 }
 
+// Handles GET /health
 func (s *Server) healthCheck(c *gin.Context) {
 	redisHealthy := true
 

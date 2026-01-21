@@ -26,13 +26,23 @@
             "path": "/api/users",
             "targets": [
                 "http://localhost:3001"
-            ]
+            ],
+            "circuit_breaker": {
+                "max_failures": 5,
+                "timeout_seconds": 30,
+                "half_open_success": 1
+            }
         },
         {
             "path": "/api/orders",
             "targets": [
                 "http://localhost:3002"
-            ]
+            ],
+            "circuit_breaker": {
+                "max_failures": 3,
+                "timeout_seconds": 60,
+                "half_open_success": 2
+            }
         }
     ],
     "rate_limiters": [
