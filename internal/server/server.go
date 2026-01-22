@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aman-churiwal/api-gateway/internal/circuitbreaker"
 	"github.com/aman-churiwal/api-gateway/internal/config"
 	"github.com/aman-churiwal/api-gateway/internal/handler"
+	"github.com/aman-churiwal/api-gateway/internal/healthcheck"
 	"github.com/aman-churiwal/api-gateway/internal/middleware"
 	"github.com/aman-churiwal/api-gateway/internal/proxy"
 	"github.com/aman-churiwal/api-gateway/internal/repository"
@@ -79,20 +81,60 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 // Creates proxy instances for each configured backend service
 func (s *Server) initializeProxies() {
 	for _, svc := range s.config.Services {
-		// Use the first target
 		if len(svc.Targets) == 0 {
 			log.Printf("Warning: Service %s has no targets configured", svc.Path)
 			continue
 		}
 
-		p, err := proxy.New(svc.Targets[0])
+		// Build proxy config
+		proxyCfg := proxy.Config{
+			Targets:              svc.Targets,
+			LoadBalancerStrategy: svc.LoadBalancer,
+		}
+
+		// Circuit breaker config
+		if svc.CircuitBreaker != nil {
+			proxyCfg.CircuitBreaker = circuitbreaker.Config{
+				MaxFailures:     svc.CircuitBreaker.MaxFailures,
+				Timeout:         time.Duration(svc.CircuitBreaker.TimeoutSeconds) * time.Second,
+				HalfOpenSuccess: svc.CircuitBreaker.HalfOpenSuccess,
+			}
+		} else {
+			proxyCfg.CircuitBreaker = circuitbreaker.Config{
+				MaxFailures:     5,
+				Timeout:         30 * time.Second,
+				HalfOpenSuccess: 1,
+			}
+		}
+
+		// Health check config
+		if svc.HealthCheck != nil {
+			proxyCfg.HealthCheck = healthcheck.Config{
+				Targets:     svc.Targets,
+				Endpoint:    svc.HealthCheck.Endpoint,
+				Interval:    time.Duration(svc.HealthCheck.IntervalSeconds) * time.Second,
+				Timeout:     time.Duration(svc.HealthCheck.TimeoutSeconds) * time.Second,
+				MaxFailures: svc.HealthCheck.MaxFailures,
+			}
+		} else {
+			proxyCfg.HealthCheck = healthcheck.Config{
+				Targets:     svc.Targets,
+				Endpoint:    "/health",
+				Interval:    10 * time.Second,
+				Timeout:     5 * time.Second,
+				MaxFailures: 3,
+			}
+		}
+
+		// Create proxy
+		p, err := proxy.NewWithConfig(proxyCfg)
 		if err != nil {
 			log.Printf("Failed to create proxy for %s: %v", svc.Path, err)
 			continue
 		}
 
 		s.proxies[svc.Path] = p
-		log.Printf("Initialized proxy for %s -> %s", svc.Path, svc.Targets[0])
+		log.Printf("Initialized proxy for %s with %d targets (strategy: %s)", svc.Path, len(svc.Targets), svc.LoadBalancer)
 	}
 }
 
@@ -136,6 +178,9 @@ func (s *Server) setupRoutes() {
 		// Circuit Breaker management (NEW)
 		admin.GET("/circuit-breakers", s.systemHandler.CircuitBreakerStatus)
 		admin.POST("/circuit-breakers/*service", s.systemHandler.ResetCircuitBreaker)
+
+		// Health Checker
+		admin.GET("/services/health", s.systemHandler.ServiceHealthStatus)
 	}
 
 	// Proxy routes
@@ -224,6 +269,11 @@ func (s *Server) Run(addr string) error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down server...")
+
+	// Stop health checkers
+	for _, p := range s.proxies {
+		p.Stop()
+	}
 
 	if s.httpServer != nil {
 		return s.httpServer.Shutdown(ctx)
