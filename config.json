@@ -25,27 +25,44 @@
         {
             "path": "/api/users",
             "targets": [
-                "http://localhost:3001"
+                "http://localhost:3001",
+                "http://localhost:3002",
+                "http://localhost:3003"
             ],
+            "load_balancer": "round-robin",
             "circuit_breaker": {
                 "max_failures": 5,
                 "timeout_seconds": 30,
                 "half_open_success": 1
+            },
+            "health_check": {
+                "endpoint": "/health",
+                "interval_seconds": 10,
+                "timeout_seconds": 5,
+                "max_failures": 3
             }
         },
         {
             "path": "/api/orders",
             "targets": [
-                "http://localhost:3002"
+                "http://localhost:3004",
+                "http://localhost:3005"
             ],
+            "load_balancer": "least_connections",
             "circuit_breaker": {
                 "max_failures": 3,
                 "timeout_seconds": 60,
                 "half_open_success": 2
+            },
+            "health_check": {
+                "endpoint": "/health",
+                "interval_seconds": 15,
+                "timeout_seconds": 5,
+                "max_failures": 2
             }
         }
     ],
-    "rate_limiters": [
+    "rate_limit_tiers": [
         {
             "name": "basic",
             "requests_per_minute": 60,

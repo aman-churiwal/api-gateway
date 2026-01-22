@@ -39,7 +39,6 @@ func (h *SystemHandler) CircuitBreakerStatus(c *gin.Context) {
 
 // Manually resets a circuit breaker
 func (h *SystemHandler) ResetCircuitBreaker(c *gin.Context) {
-	// Wildcard param already includes leading slash (e.g., "/api/users")
 	service := c.Param("service")
 
 	proxyInstance, exists := h.proxies[service]
@@ -56,4 +55,39 @@ func (h *SystemHandler) ResetCircuitBreaker(c *gin.Context) {
 		"message": "Circuit breaker reset successfully",
 		"service": service,
 	})
+}
+
+// Returns health status of all backend targets
+func (h *SystemHandler) ServiceHealthStatus(c *gin.Context) {
+	healthStatuses := make(map[string]interface{})
+
+	for path, proxyInstance := range h.proxies {
+		targetStatuses := proxyInstance.GetHealthStatus()
+		healthyTargets := proxyInstance.GetHealthyTargets()
+		allTargets := proxyInstance.GetAllTargets()
+		overallHealth := proxyInstance.OverallHealth()
+
+		statuses := make([]gin.H, 0)
+		for _, status := range targetStatuses {
+			statuses = append(statuses, gin.H{
+				"target":        status.Target,
+				"is_healthy":    status.IsHealthy,
+				"last_check":    status.LastCheck,
+				"last_success":  status.LastSuccess,
+				"last_failure":  status.LastFailure,
+				"failure_count": status.FailureCount,
+			})
+		}
+
+		healthStatuses[path] = gin.H{
+			"overall_health":  overallHealth.String(),
+			"healthy_count":   len(healthyTargets),
+			"total_count":     len(allTargets),
+			"healthy_targets": healthyTargets,
+			"all_targets":     allTargets,
+			"target_status":   statuses,
+		}
+	}
+
+	c.JSON(http.StatusOK, healthStatuses)
 }

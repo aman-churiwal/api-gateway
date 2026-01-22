@@ -44,13 +44,22 @@ type JWTConfig struct {
 type ServiceConfig struct {
 	Path           string                `json:"path"`
 	Targets        []string              `json:"targets"`
+	LoadBalancer   string                `json:"load_balancer"` // "round-robin", "random", "least_connections"
 	CircuitBreaker *CircuitBreakerConfig `json:"circuit_breaker,omitempty"`
+	HealthCheck    *HealthCheckConfig    `json:"health_check,omitempty"`
 }
 
 type CircuitBreakerConfig struct {
 	MaxFailures     int `json:"max_failures"`      // Default: 5
 	TimeoutSeconds  int `json:"timeout_seconds"`   // Default: 30
 	HalfOpenSuccess int `json:"half_open_success"` // Default: 1
+}
+
+type HealthCheckConfig struct {
+	Endpoint        string `json:"endpoint"`         // Default: "/health"
+	IntervalSeconds int    `json:"interval_seconds"` // Default: 10
+	TimeoutSeconds  int    `json:"timeout"`          // Default: 5
+	MaxFailures     int    `json:"max_failures"`     // Default: 3
 }
 
 type RateLimiterTier struct {
