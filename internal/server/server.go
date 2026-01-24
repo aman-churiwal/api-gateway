@@ -19,17 +19,19 @@ import (
 )
 
 type Server struct {
-	router        *gin.Engine
-	config        *config.Config
-	redis         *storage.RedisClient
-	postgres      *storage.Postgres
-	proxies       map[string]*proxy.Proxy
-	apiKeyService *service.APIKeyService
-	apiKeyHandler *handler.APIKeyHandler
-	authService   *service.AuthService
-	authHandler   *handler.AuthHandler
-	systemHandler *handler.SystemHandler
-	httpServer    *http.Server
+	router           *gin.Engine
+	config           *config.Config
+	redis            *storage.RedisClient
+	postgres         *storage.Postgres
+	proxies          map[string]*proxy.Proxy
+	apiKeyService    *service.APIKeyService
+	apiKeyHandler    *handler.APIKeyHandler
+	authService      *service.AuthService
+	authHandler      *handler.AuthHandler
+	systemHandler    *handler.SystemHandler
+	analyticsService *service.AnalyticsService
+	analyticsHandler *handler.AnalyticsHandler
+	httpServer       *http.Server
 }
 
 func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postgres) *Server {
@@ -42,25 +44,30 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 	// Initialize repositories
 	apiKeyRepo := repository.NewAPIKeyRepository(postgres)
 	authRepo := repository.NewUserRepository(postgres)
+	requestLogRepo := repository.NewRequestLogRepository(postgres)
 
 	// Initialize services
 	apiKeyService := service.NewAPIKeyService(postgres, apiKeyRepo, redis)
 	authService := service.NewAuthService(authRepo, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
+	analyticsService := service.NewAnalyticsService(postgres, requestLogRepo)
 
 	// Initialize handlers
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	authHandler := handler.NewAuthHandler(authService)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
 
 	s := &Server{
-		router:        router,
-		config:        cfg,
-		redis:         redis,
-		postgres:      postgres,
-		proxies:       make(map[string]*proxy.Proxy),
-		apiKeyService: apiKeyService,
-		apiKeyHandler: apiKeyHandler,
-		authService:   authService,
-		authHandler:   authHandler,
+		router:           router,
+		config:           cfg,
+		redis:            redis,
+		postgres:         postgres,
+		proxies:          make(map[string]*proxy.Proxy),
+		apiKeyService:    apiKeyService,
+		apiKeyHandler:    apiKeyHandler,
+		authService:      authService,
+		authHandler:      authHandler,
+		analyticsService: analyticsService,
+		analyticsHandler: analyticsHandler,
 	}
 
 	// Initialize proxies for each configured service
@@ -68,6 +75,9 @@ func New(cfg *config.Config, redis *storage.RedisClient, postgres *storage.Postg
 
 	// Initialize system handler after proxies are created
 	s.systemHandler = handler.NewSystemHandler(s.proxies)
+
+	// Initialize request logger
+	middleware.InitRequestLogger(postgres, 1000)
 
 	// Setup middleware
 	s.setupMiddleware()
@@ -146,6 +156,8 @@ func (s *Server) setupMiddleware() {
 
 	s.router.Use(middleware.Logger())
 
+	s.router.Use(middleware.RequestLogger())
+
 	s.router.Use(middleware.CORS())
 
 	s.router.Use(middleware.APIKeyValidator(s.apiKeyService))
@@ -155,8 +167,10 @@ func (s *Server) setupMiddleware() {
 
 // Configures all application routes
 func (s *Server) setupRoutes() {
+	// Public routes
 	s.router.GET("/health", s.healthCheck)
 
+	// Auth routes
 	auth := s.router.Group("/auth")
 	{
 		auth.POST("/register", s.authHandler.Register)
@@ -173,6 +187,8 @@ func (s *Server) setupRoutes() {
 		admin.GET("/keys/:id", s.apiKeyHandler.Get)
 		admin.PUT("/keys/:id", s.apiKeyHandler.Update)
 		admin.DELETE("/keys/:id", s.apiKeyHandler.Delete)
+
+		// System status
 		admin.GET("/status", s.adminStatus)
 
 		// Circuit Breaker management (NEW)
@@ -181,6 +197,12 @@ func (s *Server) setupRoutes() {
 
 		// Health Checker
 		admin.GET("/services/health", s.systemHandler.ServiceHealthStatus)
+
+		// Analytics routes
+		admin.GET("/analytics", s.analyticsHandler.GetSummary)
+		admin.GET("/analytics/timeseries", s.analyticsHandler.GetTimeSeries)
+		admin.GET("/analytics/keys/:id", s.analyticsHandler.GetAPIKeyStats)
+		admin.GET("/logs", s.analyticsHandler.GetLogs)
 	}
 
 	// Proxy routes

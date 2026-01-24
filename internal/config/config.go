@@ -11,6 +11,7 @@ type Config struct {
 	Redis          RedisConfig       `json:"redis"`
 	Database       DatabaseConfig    `json:"database"`
 	JWT            JWTConfig         `json:"jwt"`
+	Analytics      AnalyticsConfig   `json:"analytics"`
 	Services       []ServiceConfig   `json:"services"`
 	RateLimitTiers []RateLimiterTier `json:"rate_limit_tiers"`
 }
@@ -39,6 +40,13 @@ type DatabaseConfig struct {
 type JWTConfig struct {
 	Secret      string `json:"secret"`
 	ExpiryHours int    `json:"expiry_hours"`
+}
+
+type AnalyticsConfig struct {
+	Enabled          bool `json:"enabled"`
+	RetentionDays    int  `json:"retention_days"`
+	BatchSize        int  `json:"batch_size"`
+	FlushIntervalSec int  `json:"flush_interval_sec"`
 }
 
 type ServiceConfig struct {

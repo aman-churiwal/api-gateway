@@ -21,6 +21,12 @@
         "secret": "my-secret-key",
         "expiry_hours": 24
     },
+    "analytics": {
+        "enabled": true,
+        "retention_days": 90,
+        "batch_size": 100,
+        "flush_interval_sec": 5
+    },
     "services": [
         {
             "path": "/api/users",
